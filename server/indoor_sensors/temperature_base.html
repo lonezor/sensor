@@ -1,0 +1,350 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        <script src="lib/simpleRequire.js"></script>
+        <script src="lib/config.js"></script>
+        <script src="lib/jquery.min.js"></script>
+        <script src="lib/facePrint.js"></script>
+        <script src="lib/testHelper.js"></script>
+        <link rel="stylesheet" href="lib/reset.css" />
+        <meta name="viewport" content="user-scalable=no,width=device-width,height=device-height">
+    </head>
+    <body>
+        <style>
+            .test-title {
+                background: #146402;
+                color: #fff;
+            }
+
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+            }
+
+            .month-toolbar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                padding: 14px 16px 8px 16px;
+                border-bottom: 1px solid #ddd;
+                background: #fafafa;
+                position: sticky;
+                top: 0;
+                z-index: 20;
+                align-items: center;
+            }
+
+            .year-break {
+                flex-basis: 100%;
+                height: 0;
+            }
+
+            .year-label {
+                flex-basis: 100%;
+                margin-top: 6px;
+                margin-bottom: 2px;
+                font-size: 13px;
+                font-weight: bold;
+                color: #4a5a66;
+            }
+
+            .month-button {
+                border: 1px solid #b7c3cc;
+                background: #fff;
+                color: #234;
+                padding: 8px 12px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                line-height: 1.2;
+            }
+
+            .month-button:hover {
+                background: #f0f4f7;
+            }
+
+            .month-button.active {
+                background: #146402;
+                border-color: #146402;
+                color: #fff;
+                font-weight: bold;
+            }
+
+            .toolbar-empty {
+                color: #666;
+                padding: 4px 0;
+            }
+        </style>
+
+        <div id="monthToolbar" class="month-toolbar"></div>
+        <div id="main2" style="width: 100%; height: 1600px;"></div>
+
+        <script>
+            require(['echarts'], function (echarts) {
+
+                var sensorData = __SENSOR_DATA_PLACEHOLDER__;
+
+                var sensorLabels = {
+                    "wifi_01": "Hallway",
+                    "wifi_02": "Kitchen",
+                    "lan_01": "Johan's Room",
+                    "lan_02": "William's Room"
+                };
+
+                var sensorColors = {
+                    "wifi_01": "#8ec6ad",
+                    "wifi_02": "#d68262",
+                    "lan_01": "#6a8caf",
+                    "lan_02": "#c06c84"
+                };
+
+                function labelForSensor(key) {
+                    return sensorLabels[key] || key.replace(/_/g, ' ');
+                }
+
+                function colorForSensor(key, index) {
+                    var fallback = ['#8ec6ad', '#d68262', '#6a8caf', '#c06c84', '#f2a541', '#7b9e87', '#7e57c2', '#26a69a'];
+                    return sensorColors[key] || fallback[index % fallback.length];
+                }
+
+                function monthKeyFromTimestamp(tsMs) {
+                    var d = new Date(tsMs);
+                    var year = d.getUTCFullYear();
+                    var month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                    return year + '-' + month;
+                }
+
+                function monthLabel(monthKey) {
+                    var parts = monthKey.split('-');
+                    var year = parseInt(parts[0], 10);
+                    var monthIndex = parseInt(parts[1], 10) - 1;
+                    return new Date(Date.UTC(year, monthIndex, 1)).toLocaleString('en-GB', {
+                        month: 'long',
+                        timeZone: 'UTC'
+                    });
+                }
+
+                function yearLabel(monthKey) {
+                    return monthKey.split('-')[0];
+                }
+
+                function buildMonthlyBuckets(sensorData) {
+                    var buckets = {};
+                    var sensorKeys = Object.keys(sensorData || {}).sort();
+
+                    sensorKeys.forEach(function (sensorKey) {
+                        var points = sensorData[sensorKey] || [];
+
+                        points.forEach(function (point) {
+                            var ts = point[0];
+                            var value = point[1];
+                            var key = monthKeyFromTimestamp(ts);
+
+                            if (!buckets[key]) {
+                                buckets[key] = {};
+                            }
+                            if (!buckets[key][sensorKey]) {
+                                buckets[key][sensorKey] = [];
+                            }
+
+                            buckets[key][sensorKey].push([ts, value]);
+                        });
+                    });
+
+                    return buckets;
+                }
+
+                var monthlyBuckets = buildMonthlyBuckets(sensorData);
+                var availableMonths = Object.keys(monthlyBuckets).sort();
+                var currentMonth = availableMonths.length ? availableMonths[availableMonths.length - 1] : null;
+
+                var chartDom = document.getElementById('main2');
+                var myChart = echarts.init(chartDom);
+                var monthToolbar = document.getElementById('monthToolbar');
+
+                function buildSeriesForMonth(monthKey) {
+                    var monthData = monthlyBuckets[monthKey] || {};
+                    var allSensorKeys = Object.keys(sensorData || {}).sort();
+
+                    return allSensorKeys
+                        .filter(function (key) {
+                            return monthData[key] && monthData[key].length > 0;
+                        })
+                        .map(function (key, index) {
+                            var color = colorForSensor(key, index);
+                            return {
+                                name: labelForSensor(key),
+                                type: 'line',
+                                smooth: true,
+                                connectNulls: true,
+                                showSymbol: false,
+                                symbol: 'none',
+                                sampling: 'average',
+                                lineStyle: { width: 2, color: color },
+                                itemStyle: { color: color },
+                                areaStyle: { opacity: 0.15, color: color },
+                                emphasis: {
+                                    disabled: true
+                                },
+                                data: monthData[key]
+                            };
+                        });
+                }
+
+                function renderMonthButtons() {
+                    monthToolbar.innerHTML = '';
+
+                    if (!availableMonths.length) {
+                        monthToolbar.innerHTML = '<div class="toolbar-empty">No data available</div>';
+                        return;
+                    }
+
+                    var lastYear = null;
+
+                    availableMonths.forEach(function (monthKey, idx) {
+                        var year = yearLabel(monthKey);
+
+                        if (year !== lastYear) {
+                            if (idx > 0) {
+                                var breakEl = document.createElement('div');
+                                breakEl.className = 'year-break';
+                                monthToolbar.appendChild(breakEl);
+                            }
+
+                            var labelEl = document.createElement('div');
+                            labelEl.className = 'year-label';
+                            labelEl.textContent = year;
+                            monthToolbar.appendChild(labelEl);
+
+                            lastYear = year;
+                        }
+
+                        var button = document.createElement('button');
+                        button.className = 'month-button' + (monthKey === currentMonth ? ' active' : '');
+                        button.textContent = monthLabel(monthKey);
+                        button.onclick = function () {
+                            currentMonth = monthKey;
+                            renderMonthButtons();
+                            renderChart(monthKey);
+                        };
+                        monthToolbar.appendChild(button);
+                    });
+                }
+
+                function renderChart(monthKey) {
+                    var series = buildSeriesForMonth(monthKey);
+
+                    var option = {
+                        animation: false,
+                        legend: {
+                            orient: 'vertical',
+                            right: 10,
+                            top: 60
+                        },
+                        tooltip: {
+                            trigger: 'axis',
+                            triggerOn: 'mousemove',
+                            transitionDuration: 0,
+                            showDelay: 0,
+                            hideDelay: 50,
+                            axisPointer: {
+                                type: 'line',
+                                snap: false,
+                                animation: false,
+                                lineStyle: {
+                                    color: '#004E52',
+                                    opacity: 0.5,
+                                    width: 2
+                                },
+                                label: {
+                                    show: false
+                                }
+                            }
+                        },
+                        toolbox: {
+                            left: 'center',
+                            itemSize: 25,
+                            top: 55,
+                            feature: {
+                                restore: {
+                                    show: true,
+                                    title: 'Reset zoom'
+                                },
+                                saveAsImage: {
+                                    show: true,
+                                    excludeComponents: ['toolbox', 'dataZoom'],
+                                    title: 'Save as Image',
+                                    type: 'png',
+                                    pixelRatio: 2
+                                }
+                            }
+                        },
+                        xAxis: {
+                            type: 'time',
+                            axisLabel: {
+                                formatter: '{yyyy}-{MM}-{dd}'
+                            },
+                            splitLine: {
+                                show: false
+                            }
+                        },
+                        yAxis: {
+                            type: 'value',
+                            name: 'Temperature (C)',
+                            nameTextStyle: {
+                                fontWeight: 'bold',
+                                fontSize: 14,
+                                align: 'left',
+                                padding: [0, 0, 10, 0]
+                            },
+                            scale: true,
+                            axisTick: {
+                                inside: true
+                            },
+                            splitLine: {
+                                show: false
+                            },
+                            axisLabel: {
+                                inside: true,
+                                formatter: '{value}\n'
+                            },
+                            z: 10
+                        },
+                        dataZoom: [
+                            {
+                                type: 'slider',
+                                top: 0,
+                                height: 50,
+                                handleSize: '60%'
+                            },
+                            {
+                                type: 'inside'
+                            }
+                        ],
+                        grid: {
+                            top: 120,
+                            left: 50,
+                            right: 160,
+                            bottom: 60,
+                            containLabel: true
+                        },
+                        series: series
+                    };
+
+                    myChart.setOption(option, true);
+                }
+
+                renderMonthButtons();
+
+                if (currentMonth) {
+                    renderChart(currentMonth);
+                }
+
+                window.addEventListener('resize', function () {
+                    myChart.resize();
+                });
+            });
+        </script>
+    </body>
+</html>
