@@ -4,12 +4,12 @@
 #include "CH9120.h"
 #include "Adafruit_SHTC3.h"
 
-UCHAR CH9120_LOCAL_IP[4] = {172, 17, 0, 21};
-UCHAR CH9120_GATEWAY[4] = {172, 17, 0, 1};
+UCHAR CH9120_LOCAL_IP[4] = {192, 168, 1, 22};
+UCHAR CH9120_GATEWAY[4] = {192, 168, 1, 1};
 UCHAR CH9120_SUBNET_MASK[4] = {255, 255, 255, 0};
-UCHAR CH9120_REMOTE_IP[4] = {172, 17, 0, 20};
-UWORD CH9120_LOCAL_PORT = 21;
-UWORD CH9120_REMOTE_PORT = 20;
+UCHAR CH9120_REMOTE_IP[4] = {192, 168, 1, 114};
+UWORD CH9120_LOCAL_PORT = 22;
+UWORD CH9120_REMOTE_PORT = 11;
 
 static Adafruit_SHTC3 shtc3 = Adafruit_SHTC3();
 static char msg[1024];
@@ -49,7 +49,7 @@ void loop() {
 
   snprintf(msg,
            sizeof(msg),
-           "TEMP_HUMIDITY_SENSOR_ETH_UNIT_01: temperature=%.2f, humidity=%.2f\n",
+           "TEMP_HUMIDITY_SENSOR_ETH_UNIT_02: temperature=%.2f, humidity=%.2f\n",
            temp.temperature,
            humidity.relative_humidity);
 
